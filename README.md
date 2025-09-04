@@ -17,7 +17,7 @@ There are definitely other features that I would love to add, but these are defi
 2. Compile - clang++ -std=c++11 nids.cpp -lpcap -o nids
 3. Run - sudo ./nids (optional: if your on mac, it will default use en0. however if your on Windows/Linux, you will need to give your interface as a command line arguement ex: sudo ./nids eth0
 
-![Program Running](assets/Screenshot 2025-09-04 at 5.18.46 PM.png)
+![Program Running](assets/Screenshot%2025-09-04%at%5.18.46%PM.png)
 
 # What I Learned
 The knowledge of both low level network progamming in C and C++ along with the knowledge of network packets is invaluable. I now know not only the structure of netowrk packets but also how to decipher them along with use them to catch intrusions. This also gave me familiarity with libpcap aswell cybersecurity/SOC exposure.
