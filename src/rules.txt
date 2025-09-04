@@ -2,6 +2,9 @@
 # Simple Signature IDS Rules
 # ===============================
 
+# 0. Testing
+alert tcp any any -> any 443 (msg:"Testing HTTPS traffic")
+
 # 1. Reconnaissance
 alert tcp any any -> any any (content:"nmap"; msg:"Nmap scan detected")
 alert tcp any any -> any any (content:"masscan"; msg:"Masscan scan detected")

@@ -127,17 +127,22 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char
 		std::cout << payload[i];
 	}
 	*/
-	extern std::vector<Rule> rules; // declare rules globally
-	std::string payload_str(reinterpret_cast<const char*>(payload), payload_length);
-	for(auto &rule: rules){
-		if(rule.protocol == "tcp"){
-			if(rule.dst_port == ntohs(tcp_header->th_dport)){
-				if(payload_str.find(rule.content) != std::string::npos){
-					std::cout << "[Alert] " << rule.content << " | src: " << source_ip << " : " << ntohs(tcp_header->th_sport) << " dst: " << dest_ip << " : " << ntohs(tcp_header->th_dport) << std::endl; 
+		extern std::vector<Rule> rules; // use global rules
+		std::string payload_str(reinterpret_cast<const char*>(payload), payload_length);
+		for(auto &rule: rules){
+			if(rule.protocol == "tcp"){
+				// Match any port if rule.dst_port == -1, else match specific port
+				if(rule.dst_port == -1 || rule.dst_port == ntohs(tcp_header->th_dport)){
+					// If rule.content is empty, always match; else, look for content in payload
+					if(rule.content.empty() || payload_str.find(rule.content) != std::string::npos){
+						std::cout << "[Alert] " << (rule.msg.empty() ? rule.content : rule.msg)
+							<< " | src: " << source_ip << " : " << ntohs(tcp_header->th_sport)
+							<< " dst: " << dest_ip << " : " << ntohs(tcp_header->th_dport) << std::endl;
+					}
 				}
-	}
-
-		}}}
+			}
+		}
+}
 
 
 int main(int argc, char *argv[]) {
@@ -151,7 +156,7 @@ int main(int argc, char *argv[]) {
 		interface = argv[1];
 	}
 
-	std::vector<Rule> rules = read_rules("rules.txt");
+	rules = read_rules("rules.txt");
 
 	// Open the network interface for live capture
 	handle = pcap_open_live(interface, SNAP_LEN, 1, 1000, errbuf);
