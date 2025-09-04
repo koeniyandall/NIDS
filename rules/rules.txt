@@ -1,0 +1,1 @@
+alert tcp any any -> any 23("Telnet connection detected");
