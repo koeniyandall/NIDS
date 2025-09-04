@@ -1,0 +1,35 @@
+# ===============================
+# Simple Signature IDS Rules
+# ===============================
+
+# 1. Reconnaissance
+alert tcp any any -> any any (content:"nmap"; msg:"Nmap scan detected")
+alert tcp any any -> any any (content:"masscan"; msg:"Masscan scan detected")
+
+# 2. Suspicious TCP flags (port scans)
+# (You’ll implement flags later in code — placeholder rules for now)
+alert tcp any any -> any any (msg:"NULL scan (no flags set)")
+alert tcp any any -> any any (msg:"XMAS scan (FIN+URG+PSH)")
+
+# 3. Services of interest
+alert tcp any any -> any 23 (msg:"Telnet connection detected")
+alert tcp any any -> any 21 (msg:"FTP connection detected")
+alert tcp any any -> any 445 (msg:"SMB connection detected")
+alert tcp any any -> any 22 (msg:"SSH connection detected")
+
+# 4. Web attacks
+alert tcp any any -> any 80 (content:"UNION SELECT"; msg:"SQL Injection attempt")
+alert tcp any any -> any 80 (content:"/etc/passwd"; msg:"Possible LFI attempt")
+alert tcp any any -> any 80 (content:"<script>"; msg:"XSS attempt")
+alert tcp any any -> any 80 (content:"cmd="; msg:"Command Injection attempt")
+alert tcp any any -> any 80 (content:"../../"; msg:"Directory Traversal attempt")
+
+# 5. Malware indicators
+alert tcp any any -> any any (content:"/bin/sh"; msg:"Shellcode execution attempt")
+alert tcp any any -> any any (content:"powershell"; msg:"Possible malicious PowerShell usage")
+alert tcp any any -> any any (content:"MZ"; msg:"Windows EXE download detected")
+
+# 6. Misc suspicious behavior
+alert tcp any any -> any 6667 (msg:"IRC traffic detected (possible botnet C2)")
+alert tcp any any -> any 31337 (msg:"Backdoor traffic detected")
+
