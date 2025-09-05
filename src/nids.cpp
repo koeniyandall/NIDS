@@ -53,14 +53,14 @@ std::vector<Rule> read_rules(const std::string filename){
 			if (start != std::string::npos && end != std::string::npos) {
 			std::string opts = line.substr(start + 1, end - start - 1);
 			if (opts.find("content:") != std::string::npos) {
-			     size_t cstart = opts.find("content:\"") + 9;
-			     size_t cend = opts.find("\"", cstart);
-			     rule.content = opts.substr(cstart, cend - cstart);
+			    size_t cstart = opts.find("content:\"") + 9;
+			    size_t cend = opts.find("\"", cstart);
+			    rule.content = opts.substr(cstart, cend - cstart);
 			}
 			if (opts.find("msg:") != std::string::npos) {
-			     size_t mstart = opts.find("msg:\"") + 5;
-			     size_t mend = opts.find("\"", mstart);
-			     rule.msg = opts.substr(mstart, mend - mstart);
+			    size_t mstart = opts.find("msg:\"") + 5;
+			    size_t mend = opts.find("\"", mstart);
+			    rule.msg = opts.substr(mstart, mend - mstart);
 			}
 			}
 			rules.push_back(rule);
