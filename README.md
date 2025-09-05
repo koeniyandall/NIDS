@@ -2,7 +2,7 @@
 Network-Based IDS System Using C++
 
 # Summary / Overview
-Libpcap was used as the packet handling engine. With libpcap, I calculated the offset and size of each tcp packet field from ethernet->IP->TCP->payload. After deciphering the packet, I searched the payload for various hueristics and known threats such as Telnet connections aswell as SSH connections. With various other rules, this NIDS is able to effectively parse packets and detect suspicious network behavior, aswell as give alerts if a certain rule has been matched. As of right now, this NIDS is able to detect port based intrusions aswell as other malware through the technique of payload parsing, however, I would love to later work on "harder to code" attacks such as SYN floods.
+Libpcap was used as the packet handling engine. With libpcap, I calculated the offset and size of each tcp packet field from ethernet->IP->TCP->payload. After deciphering the packet, I searched the payload for various hueristics and known threats such as Telnet connections aswell as SSH connections. With various other rules, this NIDS is able to effectively parse packets and detect suspicious network behavior, aswell as give alerts if a certain rule has been matched. Additionally, the NIDS creates logs of alerts including destination port, source IP, aswell as the error message. As of right now, this NIDS is able to detect port based intrusions aswell as other malware through the technique of payload parsing, however, I would love to later work on "harder to code" attacks such as SYN floods.
 
 # Future
 As for future additions to this project, I would like to implement the following:
