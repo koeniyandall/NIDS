@@ -8,6 +8,8 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <time.h>
+#include <cstring>
 
 
 struct Rule {
@@ -34,6 +36,22 @@ std::vector<Rule> rules;  // actual definition (not extern)
 struct PacketHandlerData {
 	int packet_count = 0;
 };
+
+
+//this function is to basically log the alerts into the log.txt file
+bool write_file(const struct Rule rule, char *src_ip){
+	std::ofstream file("log.txt", std::ios::app);
+	if(!file.is_open()){
+		return false;
+	}
+	time_t my_time = time(NULL);	
+	char *print_time = ctime(&my_time);
+
+	print_time[strcspn(print_time, "\n")] = '\0';
+
+	file << print_time << " | Protocol: " << rule.protocol << " | Destination Port: " << rule.dst_port << " | Source IP: " << src_ip <<  " | Reason Flagged: " << rule.msg << std::endl;
+	return true;
+}
 
 
 // Example: alert tcp any any -> any 80 (content:"UNION SELECT"; msg:"SQLi")
@@ -135,6 +153,7 @@ void packet_handler(u_char *user, const struct pcap_pkthdr *pkthdr, const u_char
 				if(rule.dst_port == -1 || rule.dst_port == ntohs(tcp_header->th_dport)){
 					// If rule.content is empty, always match; else, look for content in payload
 					if(rule.content.empty() || payload_str.find(rule.content) != std::string::npos){
+						write_file(rule,(char *)source_ip);
 						std::cout << "[Alert] " << (rule.msg.empty() ? rule.content : rule.msg)
 							<< " | src: " << source_ip << " : " << ntohs(tcp_header->th_sport)
 							<< " dst: " << dest_ip << " : " << ntohs(tcp_header->th_dport) << std::endl;
