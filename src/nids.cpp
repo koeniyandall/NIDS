@@ -1,195 +1,165 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <vector>
+#include <string>
+#include <cstring>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <nids.h>
 
+// Struct to define a detection rule
 struct Rule
 {
-	std::string protocol; // "tcp", "udp", etc.
-	int dst_port;		  // destination port (or -1 for any)
-	std::string content;  // string to search in payload
+	std::string protocol; // e.g., "tcp"
+	int dst_port;		  // -1 means any
+	std::string content;  // keyword to search for in payload
 	std::string msg;	  // alert message
 };
 
-std::vector<Rule> rules; // actual definition (not extern)
+std::vector<Rule> rules; // Global rule list
 
-// Defines the libpcap API (pcap_loop, etc.)
-// Defines standard I/O streams (std::cout, std::cerr)
-// Defines struct for IPv4 header (ip_hdr)
-// Defines struct for TCP header (tcphdr)
-// Defines struct for Ethernet header (ether_header) + constants
-// Defines struct for in_addr and in_addrlen for addresses
-// Defines inet_ntop and byte-order helper for addresses
-
-// Define constants
-#define SNAP_LEN 65536
-
-// A user data struct to pass to the handler
-struct PacketHandlerData
-{
-	int packet_count = 0;
-};
-
-// Libnids TCP callback function - MODIFIED TO FIX COMPILATION ERROR
-// NOTE: This will not work correctly, as it cannot access the tcp_stream data
-void tcp_callback(void)
-{
-	// This is the problematic part. There is no 'ts' (tcp_stream)
-	// argument to access. This function cannot perform its intended
-	// logic with this signature.
-	// The code below is included for reference of what you were trying
-	// to do, but it will cause a compilation error.
-
-	// For a correct implementation, you need a different libnids header.
-	// For example: void tcp_callback(struct tcp_stream *ts, void **param) { ... }
-}
-
-// Function to read rules from a file
-std::vector<Rule> read_rules(const std::string filename)
+// Function to load rules from a file
+std::vector<Rule> read_rules(const std::string &filename)
 {
 	std::vector<Rule> loaded_rules;
 	std::ifstream file(filename);
 	if (!file.is_open())
 	{
-		std::cerr << "Error: Could not open rules file '" << filename << "'" << std::endl;
+		std::cerr << "Error: Could not open rules file '" << filename << "'\n";
 		return loaded_rules;
 	}
+
 	std::string line;
-	while (getline(file, line))
+	while (std::getline(file, line))
 	{
 		if (line.empty() || line[0] == '#')
 			continue;
 
-		std::string action, proto, src, arrow, dst_ip;
 		Rule rule;
 		std::istringstream iss(line);
-		iss >> action >> proto >> src >> src >> arrow >> dst_ip >> rule.dst_port;
+		std::string action, proto, src, src_port, arrow, dst, dst_port;
 
-		rule.protocol = proto;
+		// Very simple parsing (e.g., alert tcp any any -> any 80 (msg:"X"; content:"Y";))
+		iss >> action >> rule.protocol >> src >> src_port >> arrow >> dst >> dst_port;
 
+		// Convert dst_port
+		rule.dst_port = (dst_port == "any") ? -1 : std::stoi(dst_port);
+
+		// Parse options inside ()
 		size_t start = line.find('(');
 		size_t end = line.find(')');
 		if (start != std::string::npos && end != std::string::npos)
 		{
-			std::string opts = line.substr(start + 1, end - start - 1);
+			std::string options = line.substr(start + 1, end - start - 1);
 
-			size_t cstart_pos = opts.find("content:\"");
-			if (cstart_pos != std::string::npos)
+			size_t msg_pos = options.find("msg:\"");
+			if (msg_pos != std::string::npos)
 			{
-				size_t cstart = cstart_pos + 9;
-				size_t cend = opts.find("\"", cstart);
-				if (cend != std::string::npos)
-				{
-					rule.content = opts.substr(cstart, cend - cstart);
-				}
+				size_t begin = msg_pos + 5;
+				size_t end_quote = options.find("\"", begin);
+				rule.msg = options.substr(begin, end_quote - begin);
 			}
 
-			size_t mstart_pos = opts.find("msg:\"");
-			if (mstart_pos != std::string::npos)
+			size_t content_pos = options.find("content:\"");
+			if (content_pos != std::string::npos)
 			{
-				size_t mstart = mstart_pos + 5;
-				size_t mend = opts.find("\"", mstart);
-				if (mend != std::string::npos)
-				{
-					rule.msg = opts.substr(mstart, mend - mstart);
-				}
+				size_t begin = content_pos + 9;
+				size_t end_quote = options.find("\"", begin);
+				rule.content = options.substr(begin, end_quote - begin);
 			}
 		}
+
 		loaded_rules.push_back(rule);
 	}
 
-	// Convert source and destination IP addresses to string
-	char source_ip[INET_ADDRSTRLEN];
-	char dest_ip[INET_ADDRSTRLEN];
+	std::cout << "Loaded " << loaded_rules.size() << " rules.\n";
+	return loaded_rules;
+}
 
-	// converts binary IP address into readable IP into arg three
-	inet_ntop(AF_INET, &ip_header->ip_src, source_ip, INET_ADDRSTRLEN);
-	inet_ntop(AF_INET, &ip_header->ip_dst, dest_ip, INET_ADDRSTRLEN);
+// TCP callback function for libnids
+void tcp_callback(struct tcp_stream *ts, void **param)
+{
+	if (ts->nids_state == NIDS_CLOSE || ts->nids_state == NIDS_RESET || ts->nids_state == NIDS_TIMED_OUT)
+		return;
 
-	int ip_header_len = ip_header->ip_hl * 4;
-	const u_char *tcp_start = packet + ETHER_HDR_LEN + ip_header_len;
-
-	const struct tcphdr *tcp_header = reinterpret_cast<const struct tcphdr *>(tcp_start);
-	int tcp_header_len = tcp_header->th_off * 4;
-
-	// calculating payload
-	int total_headers_size = ETHER_HDR_LEN + ip_header_len + tcp_header_len;
-	const u_char *payload = packet + total_headers_size;
-
-	int payload_length = pkthdr->caplen - total_headers_size;
-
-	std::cout << "Current Packet: " << data->packet_count
-			  << " | Source IP: " << source_ip
-			  << " | Destination IP: " << dest_ip
-			  << " | Source Port: " << ntohs(tcp_header->th_sport)
-			  << " | Destination Port: " << ntohs(tcp_header->th_dport) << std::endl;
-
-	// setting null terminator and printing the payload
-	/*for(int i = 0; i < payload_length;  i++){
-		std::cout << payload[i];
-	}
-	*/
-	extern std::vector<Rule> rules; // use global rules
-	std::string payload_str(reinterpret_cast<const char *>(payload), payload_length);
-	for (auto &rule : rules)
+	if (ts->nids_state == NIDS_DATA)
 	{
-		if (rule.protocol == "tcp")
+		const char *payload;
+		int payload_len;
+
+		if (ts->client.count_new > 0)
 		{
-			// Match any port if rule.dst_port == -1, else match specific port
-			if (rule.dst_port == -1 || rule.dst_port == ntohs(tcp_header->th_dport))
-			{
-				// If rule.content is empty, always match; else, look for content in payload
-				if (rule.content.empty() || payload_str.find(rule.content) != std::string::npos)
-				{
-					std::cout << "[Alert] " << (rule.msg.empty() ? rule.content : rule.msg)
-							  << " | src: " << source_ip << " : " << ntohs(tcp_header->th_sport)
-							  << " dst: " << dest_ip << " : " << ntohs(tcp_header->th_dport) << std::endl;
-				}
-			}
+			payload = ts->client.data;
+			payload_len = ts->client.count_new;
+		}
+		else if (ts->server.count_new > 0)
+		{
+			payload = ts->server.data;
+			payload_len = ts->server.count_new;
+		}
+		else
+		{
+			return;
+		}
+
+		std::string payload_str(payload, payload_len);
+
+		char src_ip[INET_ADDRSTRLEN];
+		char dst_ip[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, &ts->addr.saddr, src_ip, INET_ADDRSTRLEN);
+		inet_ntop(AF_INET, &ts->addr.daddr, dst_ip, INET_ADDRSTRLEN);
+		uint16_t src_port = ntohs(ts->addr.source);
+		uint16_t dst_port = ntohs(ts->addr.dest);
+
+		for (const auto &rule : rules)
+		{
+			if (rule.protocol != "tcp")
+				continue;
+
+			if (rule.dst_port != -1 && rule.dst_port != dst_port)
+				continue;
+
+			if (!rule.content.empty() && payload_str.find(rule.content) == std::string::npos)
+				continue;
+
+			std::cout << "[Alert] " << (rule.msg.empty() ? rule.content : rule.msg)
+					  << " | src: " << src_ip << ":" << src_port
+					  << " -> dst: " << dst_ip << ":" << dst_port << "\n";
 		}
 	}
 }
 
 int main(int argc, char *argv[])
 {
-	char errbuf[PCAP_ERRBUF_SIZE];
-	pcap_t *handle;
-	PacketHandlerData data;
-
-	// Default interface - can be overridden by command line argument
-	const char *interface = "en0"; // Default for macOS
+	// Set interface (default: eth0)
 	if (argc > 1)
-	{
-		interface = argv[1];
-	}
+		nids_params.device = argv[1];
+	else
+		nids_params.device = "en0"; // or "en0" for macOS
 
+	// Optional: capture entire packet
+	nids_params.scan_num_hosts = 0;
+
+	// Load rules
 	rules = read_rules("rules.txt");
 	if (rules.empty())
 	{
-		std::cerr << "Warning: No rules loaded. IDS will not detect any threats." << std::endl;
+		std::cerr << "Warning: No rules loaded.\n";
 	}
 
-	// Initialize Libnids
+	// Initialize NIDS
 	if (!nids_init())
 	{
-		std::cerr << "nids_init() failed: " << nids_errbuf << std::endl;
+		std::cerr << "nids_init() failed: " << nids_errbuf << "\n";
 		return 1;
 	}
 
-	// Set the device to listen on if provided as a command-line argument
-	if (argc > 1)
-	{
-		nids_params.device = argv[1];
-	}
-
-	// Register the TCP callback function
+	// Register callback
 	nids_register_tcp(tcp_callback);
 
-	// Run the Libnids main loop
-	std::cout << "Starting IDS and listening for network traffic..." << std::endl;
+	std::cout << "Starting IDS on interface '" << nids_params.device << "'...\n";
 	nids_run();
-
-	// nids_run() is a blocking call. This will only be reached on error.
-	std::cerr << "nids_run() terminated: " << nids_errbuf << std::endl;
 
 	return 0;
 }
