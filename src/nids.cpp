@@ -1,40 +1,33 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <string>
-#include <vector>
-#include <time.h>
-#include <cstring>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 
-// Rule struct definition
 struct Rule
 {
-	std::string protocol;
-	int dst_port;
-	std::string content;
-	std::string msg;
+	std::string protocol; // "tcp", "udp", etc.
+	int dst_port;		  // destination port (or -1 for any)
+	std::string content;  // string to search in payload
+	std::string msg;	  // alert message
 };
 
-std::vector<Rule> rules;
+std::vector<Rule> rules; // actual definition (not extern)
 
-// Logs alerts to a file
-bool write_file(const struct Rule rule, const char *src_ip)
+// Defines the libpcap API (pcap_loop, etc.)
+// Defines standard I/O streams (std::cout, std::cerr)
+// Defines struct for IPv4 header (ip_hdr)
+// Defines struct for TCP header (tcphdr)
+// Defines struct for Ethernet header (ether_header) + constants
+// Defines struct for in_addr and in_addrlen for addresses
+// Defines inet_ntop and byte-order helper for addresses
+
+// Define constants
+#define SNAP_LEN 65536
+
+// A user data struct to pass to the handler
+struct PacketHandlerData
 {
-	std::ofstream file("log.txt", std::ios::app);
-	if (!file.is_open())
-	{
-		return false;
-	}
-	time_t my_time = time(NULL);
-	char *print_time = ctime(&my_time);
-	print_time[strcspn(print_time, "\n")] = '\0';
-	file << print_time << " | Protocol: " << rule.protocol << " | Destination Port: " << rule.dst_port
-		 << " | Source IP: " << src_ip << " | Reason Flagged: " << rule.msg << std::endl;
-	return true;
-}
+	int packet_count = 0;
+};
 
 // Libnids TCP callback function - MODIFIED TO FIX COMPILATION ERROR
 // NOTE: This will not work correctly, as it cannot access the tcp_stream data
@@ -103,12 +96,72 @@ std::vector<Rule> read_rules(const std::string filename)
 		}
 		loaded_rules.push_back(rule);
 	}
-	return loaded_rules;
+
+	// Convert source and destination IP addresses to string
+	char source_ip[INET_ADDRSTRLEN];
+	char dest_ip[INET_ADDRSTRLEN];
+
+	// converts binary IP address into readable IP into arg three
+	inet_ntop(AF_INET, &ip_header->ip_src, source_ip, INET_ADDRSTRLEN);
+	inet_ntop(AF_INET, &ip_header->ip_dst, dest_ip, INET_ADDRSTRLEN);
+
+	int ip_header_len = ip_header->ip_hl * 4;
+	const u_char *tcp_start = packet + ETHER_HDR_LEN + ip_header_len;
+
+	const struct tcphdr *tcp_header = reinterpret_cast<const struct tcphdr *>(tcp_start);
+	int tcp_header_len = tcp_header->th_off * 4;
+
+	// calculating payload
+	int total_headers_size = ETHER_HDR_LEN + ip_header_len + tcp_header_len;
+	const u_char *payload = packet + total_headers_size;
+
+	int payload_length = pkthdr->caplen - total_headers_size;
+
+	std::cout << "Current Packet: " << data->packet_count
+			  << " | Source IP: " << source_ip
+			  << " | Destination IP: " << dest_ip
+			  << " | Source Port: " << ntohs(tcp_header->th_sport)
+			  << " | Destination Port: " << ntohs(tcp_header->th_dport) << std::endl;
+
+	// setting null terminator and printing the payload
+	/*for(int i = 0; i < payload_length;  i++){
+		std::cout << payload[i];
+	}
+	*/
+	extern std::vector<Rule> rules; // use global rules
+	std::string payload_str(reinterpret_cast<const char *>(payload), payload_length);
+	for (auto &rule : rules)
+	{
+		if (rule.protocol == "tcp")
+		{
+			// Match any port if rule.dst_port == -1, else match specific port
+			if (rule.dst_port == -1 || rule.dst_port == ntohs(tcp_header->th_dport))
+			{
+				// If rule.content is empty, always match; else, look for content in payload
+				if (rule.content.empty() || payload_str.find(rule.content) != std::string::npos)
+				{
+					std::cout << "[Alert] " << (rule.msg.empty() ? rule.content : rule.msg)
+							  << " | src: " << source_ip << " : " << ntohs(tcp_header->th_sport)
+							  << " dst: " << dest_ip << " : " << ntohs(tcp_header->th_dport) << std::endl;
+				}
+			}
+		}
+	}
 }
 
 int main(int argc, char *argv[])
 {
-	// Load rules first, so they are available for the callbacks
+	char errbuf[PCAP_ERRBUF_SIZE];
+	pcap_t *handle;
+	PacketHandlerData data;
+
+	// Default interface - can be overridden by command line argument
+	const char *interface = "en0"; // Default for macOS
+	if (argc > 1)
+	{
+		interface = argv[1];
+	}
+
 	rules = read_rules("rules.txt");
 	if (rules.empty())
 	{
